@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نظام الحضور والانصراف</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--bg:#f3f5f4;--card:#fff;--tx:#1b2b27;--mut:#6b7a76;--pri:#0f4c3a;--pri2:#e4efe9;--acc:#b8893a;--bd:#dde3e0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Tajawal,Tahoma,Arial,sans-serif;font-size:15px}
+header{background:var(--pri);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header h1{margin:0;font-size:18px}header small{opacity:.8}
+nav button{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;padding:7px 16px;border-radius:6px;font:inherit;cursor:pointer;margin-right:6px}
+nav button.on{background:#fff;color:var(--pri)}
+main{max-width:1050px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:18px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.stat{border-right:4px solid var(--acc);padding:6px 12px}.stat b{display:block;font-size:28px;color:var(--pri)}.stat span{color:var(--mut);font-size:13px}
+.clock{font-size:52px;font-weight:700;color:var(--pri);text-align:center;direction:ltr}
+.sub{text-align:center;color:var(--mut)}
+.pill{display:inline-block;padding:4px 14px;border-radius:20px;font-size:13px;font-weight:700}
+.p-ok{background:#d7f0e2;color:#14613c}.p-bad{background:#fbdedb;color:#8c1d18}.p-wait{background:#eee8d6;color:#7a5a16}
+.cam{position:relative;max-width:480px;margin:14px auto;aspect-ratio:4/3;background:#0b1210;border-radius:10px;overflow:hidden}
+.cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam .frame{position:absolute;inset:10% 25%;border:2px solid #d9a954;border-radius:50%/42%;pointer-events:none}
+.res{text-align:center;padding:14px;border-radius:8px;font-weight:700;background:var(--pri2);color:var(--pri);min-height:52px}
+.res.ok{background:#d7f0e2;color:#14613c}.res.bad{background:#fbdedb;color:#8c1d18}
+.steps{display:flex;gap:10px;justify-content:center;margin-top:8px}
+.steps span{padding:3px 12px;border-radius:14px;background:#0001}.steps span.d{background:#d7f0e2;color:#14613c}
+button.b{background:var(--pri);color:#fff;border:0;padding:10px 20px;border-radius:7px;font:inherit;font-weight:700;cursor:pointer}
+button.b.s{background:var(--pri2);color:var(--pri)}button.b.d{background:#b3261e}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--bd)}th{background:var(--pri2);color:var(--pri)}
+.wrap{overflow-x:auto}.hide{display:none}
+input,select{font:inherit;padding:8px 10px;border:1px solid var(--bd);border-radius:6px}
+label{display:block;font-size:13px;color:var(--mut);margin:0 0 3px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+img.av{width:36px;height:36px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-left:8px}
+.note{font-size:13px;color:var(--mut)}
+@media print{header,.noprint{display:none!important}}
+</style>
+</head>
+<body>
+
+<script>
+/* ===================== الإعدادات (عدّلها هنا) ===================== */
+const CONFIG = {
+  office: 'مكتب النائب إياد الجبوري',
+  inStart: '09:00',   // بداية الدخول
+  inEnd:   '09:30',   // نهاية الدخول (بعدها غياب)
+  outStart:'15:00',   // بداية الخروج
+  threshold: 0.5,     // حساسية التطابق (أقل = أشد)
+  weekend: [5, 6],    // الجمعة والسبت
+  adminEmail: 'ahmedoady543@gmail.com',
+  deviceEmail: 'device@office.com', // الحساب الذي يدخل به الباركود تلقائياً
+  lat: 0, lng: 0, radius: 150, // موقع المكتب (خط العرض والطول) والمسافة بالمتر. اتركهم 0 لإلغاء فحص الموقع
+  models: 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/'
+};
+/* الصق هنا إعدادات Firebase من موقع Firebase */
+const firebaseConfig = {
+  apiKey: "AIzaSyA7Za3kqOaqVF7SY-uArEm2gcLRAgqpe38",
+  authDomain: "attendance-24336.firebaseapp.com",
+  projectId: "attendance-24336",
+  storageBucket: "attendance-24336.firebasestorage.app",
+  messagingSenderId: "496107427998",
+  appId: "1:496107427998:web:c5b00884a988b59c44838f"
+};
+/* ================================================================== */
+</script>
+
+<header>
+ <div><h1 id="ttl"></h1><small>نظام الحضور والانصراف بالبصمة الوجهية</small></div>
+ <nav class="noprint hide" id="nav"><button id="n1" class="on" onclick="go(1)">البصمة</button><button id="n2" onclick="go(2)">لوحة المدير</button><button onclick="auth.signOut()">تسجيل خروج</button></nav>
+</header>
+<main>
+<section id="vl">
+ <div class="card" style="max-width:360px;margin:30px auto;text-align:center">
+  <h3 style="margin-top:0">تسجيل الدخول</h3>
+  <input id="em" type="email" placeholder="البريد الإلكتروني" style="width:100%;direction:ltr"><br><br>
+  <input id="pw" type="password" placeholder="كلمة السر" style="width:100%;direction:ltr"><br><br>
+  <button class="b" style="width:100%" onclick="login()">دخول</button>
+  <p class="note" id="lerr" style="color:#b3261e"></p>
+ </div>
+</section>
+
+<section id="v1" class="hide">
+ <div class="card">
+  <div class="clock" id="clk">--:--:--</div>
+  <div class="sub" id="dt"></div>
+  <div class="sub" style="margin-top:8px"><span class="pill" id="mode"></span></div>
+  <div class="cam"><video id="vid" autoplay playsinline muted></video><div class="frame"></div></div>
+  <div class="res" id="res">جاري التحميل...</div>
+  <div class="steps hide" id="steps"><span id="sR">حرّك رأسك لليمين</span><span id="sL">حرّك رأسك لليسار</span></div>
+  <p class="note" style="text-align:center">الدخول: <span id="r1"></span> &nbsp;|&nbsp; الخروج: من <span id="r2"></span></p>
+ </div>
+</section>
+
+<section id="v2" class="hide">
+ <div class="noprint" style="margin-bottom:14px"><button class="b" onclick="tab(1)">اليوم</button> <button class="b s" onclick="tab(2)">التقارير</button> <button class="b s" onclick="tab(3)">الموظفون</button> <button class="b s" onclick="tab(4)">الباركود</button></div>
+ <div id="t1"></div>
+ <div id="t2" class="hide">
+  <div class="card noprint"><div class="row">
+   <div><label>من</label><input type="date" id="f1"></div><div><label>إلى</label><input type="date" id="f2"></div>
+   <div><label>الموظف</label><select id="f3"></select></div>
+   <button class="b" onclick="rep()">عرض</button><button class="b s" onclick="csv()">تصدير Excel</button><button class="b s" onclick="print()">طباعة</button></div></div>
+  <div id="repo"></div>
+ </div>
+ <div id="t3" class="hide">
+  <div class="card">
+   <h3 style="margin-top:0">إضافة موظف جديد</h3>
+   <div class="row" style="align-items:start">
+    <div><label>الاسم</label><input id="en"><br><br><label>الوظيفة</label><input id="ej"><br><br>
+     <button class="b" onclick="enroll()">التقاط البصمة وحفظ</button>
+     <p class="note" id="emsg">اجعل الموظف ينظر للكاميرا مباشرة وبإضاءة جيدة. يتم التقاط 3 صور متتالية.</p></div>
+    <div class="cam" style="width:260px;margin:0"><video id="evid" autoplay playsinline muted></video></div>
+   </div></div>
+  <div class="card wrap" id="elist"></div>
+ </div>
+ <div id="t4" class="hide">
+  <div class="card" style="text-align:center">
+   <div class="noprint">
+    <h3 style="margin-top:0">باركود التسجيل</h3>
+    <p class="note">اكتب كلمة سر حساب الجهاز، اضغط «إنشاء»، ثم اطبع الباركود وعلّقه بالمكتب.</p>
+    <input id="qp" type="password" placeholder="كلمة سر حساب الجهاز" style="direction:ltr"> <button class="b" onclick="mkqr()">إنشاء</button> <button class="b s" onclick="print()">طباعة</button>
+   </div>
+   <div id="qr" style="display:flex;justify-content:center;margin:20px"></div>
+   <div id="qt" style="font-weight:700"></div>
+  </div>
+ </div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const mn=t=>{const[h,m]=t.split(':');return +h*60+ +m};
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const hm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const FAKE=new URLSearchParams(location.search).get('t'); /* للتجربة: ?t=09:45 */
+function now(){const d=new Date();if(FAKE){const[h,m]=FAKE.split(':');d.setHours(+h,+m,0)}return d}
+$('ttl').textContent=CONFIG.office;$('r1').textContent=CONFIG.inStart+' – '+CONFIG.inEnd;$('r2').textContent=CONFIG.outStart;
+
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth(),db=firebase.firestore();
+let EMPS=[],TL={},isAdmin=false,matcher=null,stream=null,modelsP=null,unsubs=[],startDay=iso(now());
+
+function login(){$('lerr').textContent='';auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value).catch(()=>$('lerr').textContent='البريد أو كلمة السر غير صحيحة')}
+(function(){const m=location.hash.match(/k=([^&]+)/);if(m){const k=decodeURIComponent(m[1]);history.replaceState(null,'',location.pathname+location.search);auth.signInWithEmailAndPassword(CONFIG.deviceEmail,k).catch(()=>{$('lerr').textContent='الباركود غير صالح'})}})();
+auth.onAuthStateChanged(u=>{
+ unsubs.forEach(f=>f());unsubs=[];
+ if(!u){$('vl').className='';$('v1').className=$('v2').className='hide';$('nav').className='hide';return}
+ isAdmin=u.email.toLowerCase()==CONFIG.adminEmail.toLowerCase();
+ $('vl').className='hide';$('nav').className='noprint';$('n2').className=isAdmin?'':'hide';
+ go(1);start()});
+
+function mode(){const d=now(),t=d.getHours()*60+d.getMinutes();
+ if(t<mn(CONFIG.inStart))return['wait','التسجيل لم يبدأ بعد'];
+ if(t<=mn(CONFIG.inEnd))return['in','تسجيل الدخول مفتوح'];
+ if(t<mn(CONFIG.outStart))return['closed','تسجيل الدخول مغلق'];
+ return['out','تسجيل الخروج مفتوح']}
+function tick(){const d=now();if(iso(d)!=startDay)location.reload();
+ $('clk').textContent=pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+ $('dt').textContent=d.toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+ const m=mode();$('mode').textContent=m[1];$('mode').className='pill '+(m[0]=='in'||m[0]=='out'?'p-ok':m[0]=='closed'?'p-bad':'p-wait')}
+setInterval(tick,1000);tick();
+function go(n){$('v1').className=n==1?'':'hide';$('v2').className=n==2&&isAdmin?'':'hide';$('n1').className=n==1?'on':'';$('n2').className=n==2?'on':'';
+ if(n==2)tab(1);if(n==1)cam()}
+
+async function cam(){if(stream)return;try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480}});vid.srcObject=stream;evid.srcObject=stream}catch(e){msg('تعذر تشغيل الكاميرا: اسمح للمتصفح باستخدامها','bad')}}
+
+/* ============ التحميل والاشتراك بالبيانات ============ */
+let started=false;
+function start(){
+ const M=CONFIG.models;
+ if(!modelsP)modelsP=Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(M),faceapi.nets.faceLandmark68Net.loadFromUri(M),faceapi.nets.faceRecognitionNet.loadFromUri(M)]);
+ unsubs.push(db.collection('employees').onSnapshot(s=>{
+  EMPS=s.docs.map(d=>({id:d.id,...d.data()}));buildMatcher();if(isAdmin){elist();today()}},e=>msg('خطأ بقراءة الموظفين: '+e.code,'bad')));
+ unsubs.push(db.collection('logs').where('date','==',iso(now())).onSnapshot(s=>{
+  TL={};s.docs.forEach(d=>{const x=d.data();TL[x.id]=x});if(isAdmin)today()},e=>msg('خطأ بقراءة السجلات: '+e.code,'bad')));
+ modelsP.then(()=>{if(!started){started=true;loop()}msg('ضع وجهك أمام الكاميرا')});
+ cam()}
+function buildMatcher(){
+ const L=EMPS.filter(e=>e.d&&e.d.length%128==0).map(e=>{const a=[];for(let i=0;i<e.d.length;i+=128)a.push(new Float32Array(e.d.slice(i,i+128)));return new faceapi.LabeledFaceDescriptors(e.id,a)});
+ matcher=L.length?new faceapi.FaceMatcher(L,CONFIG.threshold):null}
+
+/* ============ البصمة ============ */
+let cur=null,seenR=false,seenL=false,lock=0;
+function msg(t,c){$('res').className='res '+(c||'');$('res').innerHTML=t}
+function steps(show){$('steps').className='steps'+(show?'':' hide');$('sR').className=seenR?'d':'';$('sL').className=seenL?'d':''}
+const opts=new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.5});
+async function loop(){
+ if($('v1').className==''&&stream&&vid.videoWidth){
+  try{const d=await faceapi.detectSingleFace(vid,opts).withFaceLandmarks().withFaceDescriptor();handle(d)}catch(e){}}
+ setTimeout(loop,100)}
+function decide(emp){
+ const d=now(),L=TL[emp.id],m=mode()[0];
+ if(CONFIG.weekend.includes(d.getDay()))return{ok:0,t:'اليوم عطلة رسمية'};
+ if(m=='wait')return{ok:0,t:'التسجيل لم يبدأ بعد'};
+ if(m=='in'){if(L&&L.in)return{ok:0,t:'سجّلت دخولك سابقاً الساعة '+L.in,good:1};return{ok:1,type:'in'}}
+ if(!(L&&L.in))return{ok:0,t:'انتهى وقت الدخول — تم احتساب اليوم <b>غياباً</b>'};
+ if(m=='closed')return{ok:0,t:'تسجيل الخروج يبدأ الساعة '+CONFIG.outStart};
+ if(L.out)return{ok:0,t:'سجّلت خروجك سابقاً الساعة '+L.out,good:1};
+ return{ok:1,type:'out'}}
+function handle(d){
+ if(Date.now()<lock)return;
+ if(!matcher){msg('لا يوجد موظفون مسجلون بعد','bad');return}
+ if(!d){cur=null;seenR=seenL=false;steps(0);msg('ضع وجهك أمام الكاميرا');return}
+ const b=matcher.findBestMatch(d.descriptor);
+ if(b.label=='unknown'){cur=null;seenR=seenL=false;steps(0);msg('وجه غير مسجل في النظام','bad');return}
+ const emp=EMPS.find(e=>e.id==b.label);if(!emp)return;
+ if(cur!=emp.id){cur=emp.id;seenR=seenL=false}
+ const dec=decide(emp),nm='<div style="font-size:20px">'+esc(emp.name)+'</div>';
+ if(!dec.ok){steps(0);msg(nm+dec.t,dec.good?'ok':'bad');return}
+ const p=d.landmarks.positions,yaw=(p[30].x-(p[0].x+p[16].x)/2)/(p[16].x-p[0].x);
+ if(yaw>.13)seenR=true;if(yaw<-.13)seenL=true;
+ steps(1);msg(nm+'للتأكد أنك شخص حقيقي: حرّك رأسك يميناً ثم يساراً');
+ if(seenR&&seenL){
+  lock=Date.now()+15000;steps(0);msg(nm+'جاري التحقق من الموقع...');
+  cur=null;seenR=seenL=false;finish(emp,dec,nm)}}
+async function finish(emp,dec,nm){
+ const r=await inOffice();
+ if(!r.ok){msg(nm+r.t,'bad');lock=Date.now()+4000;return}
+ const t=now(),day=iso(t);
+ try{await db.collection('logs').doc(day+'_'+emp.id).set({date:day,id:emp.id,[dec.type]:hm(t)},{merge:true})}
+ catch(e){msg('تعذر حفظ البصمة، تأكد من الإنترنت','bad');lock=Date.now()+3000;return}
+ msg(nm+(dec.type=='in'?'تم تسجيل الدخول الساعة ':'تم تسجيل الخروج الساعة ')+hm(t),'ok');lock=Date.now()+5000}
+function inOffice(){
+ if(!CONFIG.lat&&!CONFIG.lng)return Promise.resolve({ok:true});
+ return new Promise(res=>{if(!navigator.geolocation)return res({ok:false,t:'الجهاز لا يدعم تحديد الموقع'});
+  navigator.geolocation.getCurrentPosition(p=>{
+   const R=6371000,r=x=>x*Math.PI/180,a=r(p.coords.latitude-CONFIG.lat),b=r(p.coords.longitude-CONFIG.lng);
+   const h=Math.sin(a/2)**2+Math.cos(r(CONFIG.lat))*Math.cos(r(p.coords.latitude))*Math.sin(b/2)**2;
+   res(2*R*Math.asin(Math.sqrt(h))<=CONFIG.radius?{ok:true}:{ok:false,t:'أنت خارج موقع المكتب — لا يمكن تسجيل البصمة'})},
+   ()=>res({ok:false,t:'يجب السماح بخدمة الموقع (GPS) لتسجيل البصمة'}),{enableHighAccuracy:true,timeout:15000,maximumAge:0})})}
+
+/* ============ لوحة المدير ============ */
+function tab(n){for(let i=1;i<=4;i++)$('t'+i).className=i==n?'':'hide';
+ if(n==1)today();if(n==3){elist();cam()}
+ if(n==2){const d=iso(now());if(!$('f1').value){$('f1').value=d.slice(0,8)+'01';$('f2').value=d}
+  $('f3').innerHTML='<option value="">كل الموظفين</option>'+EMPS.map(e=>'<option value="'+e.id+'">'+esc(e.name)+'</option>').join('');rep()}}
+const av=e=>e.thumb?'<img class="av" src="'+e.thumb+'" alt="">':'';
+function status(day,L){const d=now(),t=d.getHours()*60+d.getMinutes(),td=iso(d);
+ if(L&&L.in)return['حاضر','p-ok'];if(day>td||(day==td&&t<=mn(CONFIG.inEnd)))return['—','p-wait'];return['غائب','p-bad']}
+function dur(L){if(!(L&&L.in&&L.out))return'—';const m=mn(L.out)-mn(L.in);return Math.floor(m/60)+'س '+m%60+'د'}
+function today(){if(!isAdmin)return;const day=iso(now());let p=0,a=0,o=0,rows='';
+ EMPS.forEach(e=>{const L=TL[e.id],s=status(day,L);if(s[0]=='حاضر')p++;if(s[0]=='غائب')a++;if(L&&L.out)o++;
+  rows+='<tr><td>'+av(e)+esc(e.name)+'</td><td>'+esc(e.job||'')+'</td><td>'+(L&&L.in||'—')+'</td><td>'+(L&&L.out||'—')+'</td><td><span class="pill '+s[1]+'">'+s[0]+'</span></td></tr>'});
+ $('t1').innerHTML='<div class="grid card"><div class="stat"><b>'+EMPS.length+'</b><span>إجمالي الموظفين</span></div><div class="stat"><b>'+p+'</b><span>حاضر اليوم</span></div><div class="stat"><b>'+a+'</b><span>غائب</span></div><div class="stat"><b>'+o+'</b><span>سجّلوا الخروج</span></div></div><div class="card wrap"><table><tr><th>الموظف</th><th>الوظيفة</th><th>الدخول</th><th>الخروج</th><th>الحالة</th></tr>'+rows+'</table></div>'}
+let RD=[];
+async function rep(){const a=$('f1').value,b=$('f2').value,f=$('f3').value;RD=[];
+ const s=await db.collection('logs').where('date','>=',a).where('date','<=',b).get(),M={};
+ s.docs.forEach(d=>{const x=d.data();M[x.date+'_'+x.id]=x});
+ const emps=EMPS.filter(e=>!f||e.id==f),sum={};emps.forEach(e=>sum[e.id]={p:0,a:0});
+ for(let d=new Date(a+'T12:00');iso(d)<=b;d.setDate(d.getDate()+1)){if(CONFIG.weekend.includes(d.getDay()))continue;const day=iso(d);
+  emps.forEach(e=>{const L=M[day+'_'+e.id],st=status(day,L);if(st[0]=='حاضر')sum[e.id].p++;if(st[0]=='غائب')sum[e.id].a++;
+   RD.push([day,e.name,L&&L.in||'',L&&L.out||'',dur(L),st[0]])})}
+ $('repo').innerHTML='<div class="card wrap"><h3 style="margin-top:0">ملخص الفترة</h3><table><tr><th>الموظف</th><th>أيام الحضور</th><th>أيام الغياب</th></tr>'+emps.map(e=>'<tr><td>'+esc(e.name)+'</td><td>'+sum[e.id].p+'</td><td>'+sum[e.id].a+'</td></tr>').join('')+'</table></div><div class="card wrap"><h3 style="margin-top:0">التفاصيل اليومية</h3><table><tr><th>التاريخ</th><th>الموظف</th><th>الدخول</th><th>الخروج</th><th>مدة العمل</th><th>الحالة</th></tr>'+RD.map(r=>'<tr>'+r.map(x=>'<td>'+esc(x||'—')+'</td>').join('')+'</tr>').join('')+'</table></div>'}
+function csv(){const t='\ufeff'+['التاريخ,الموظف,الدخول,الخروج,مدة العمل,الحالة'].concat(RD.map(r=>r.map(x=>'"'+x+'"').join(','))).join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='تقرير-الحضور.csv';a.click()}
+async function enroll(){
+ const n=$('en').value.trim();if(!n)return alert('اكتب اسم الموظف');
+ if(!stream||!evid.videoWidth)return alert('الكاميرا غير جاهزة');
+ await modelsP;const ds=[],o=new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:.5});
+ for(let i=1;i<=3;i++){$('emsg').textContent='جاري التقاط الصورة '+i+' من 3... ثبّت وجهك';
+  const d=await faceapi.detectSingleFace(evid,o).withFaceLandmarks().withFaceDescriptor();
+  if(!d){$('emsg').textContent='لم يتم اكتشاف وجه. قرّب الوجه وحسّن الإضاءة وحاول مرة ثانية.';return}
+  ds.push(...Array.from(d.descriptor));await sleep(600)}
+ const c=document.createElement('canvas');c.width=96;c.height=72;c.getContext('2d').drawImage(evid,0,0,96,72);
+ await db.collection('employees').add({name:n,job:$('ej').value.trim(),d:ds,thumb:c.toDataURL('image/jpeg',.6),created:Date.now()});
+ $('en').value='';$('ej').value='';$('emsg').textContent='تم حفظ الموظف بنجاح ✓'}
+function elist(){if(!isAdmin)return;$('elist').innerHTML='<table><tr><th>الموظف</th><th>الوظيفة</th><th></th></tr>'+EMPS.map(e=>'<tr><td>'+av(e)+esc(e.name)+'</td><td>'+esc(e.job||'')+'</td><td><button class="b d" onclick="del(\''+e.id+'\')">حذف</button></td></tr>').join('')+'</table>'}
+function del(id){if(confirm('حذف الموظف؟ (سجلاته القديمة تبقى)'))db.collection('employees').doc(id).delete()}
+function mkqr(){const k=$('qp').value;if(!k)return alert('اكتب كلمة سر حساب الجهاز');
+ const u=location.origin+location.pathname+'#k='+encodeURIComponent(k);$('qr').innerHTML='';
+ new QRCode($('qr'),{text:u,width:240,height:240});$('qt').textContent='امسح الباركود بكاميرا الموبايل للدخول إلى صفحة البصمة'}
+</script>
+</body>
+</html>
