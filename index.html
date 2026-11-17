@@ -56,19 +56,15 @@ const CONFIG = {
   outStart:'15:00',   // بداية الخروج
   threshold: 0.5,     // حساسية التطابق (أقل = أشد)
   weekend: [5, 6],    // الجمعة والسبت
-  adminEmail: 'ahmedoady543@gmail.com',
-  deviceEmail: 'device@office.com', // الحساب الذي يدخل به الباركود تلقائياً
+  testMode: true,     // وضع تجريبي: يفتح بدون تسجيل دخول. غيّره إلى false بعد التجربة
+  adminEmail: 'ahmedoady53@gmail.com',
+  deviceEmail: 'ضع-ايميل-حساب-الجهاز-هنا@gmail.com', // الحساب الذي يدخل به الباركود تلقائياً
   lat: 0, lng: 0, radius: 150, // موقع المكتب (خط العرض والطول) والمسافة بالمتر. اتركهم 0 لإلغاء فحص الموقع
   models: 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/'
 };
 /* الصق هنا إعدادات Firebase من موقع Firebase */
 const firebaseConfig = {
-  apiKey: "AIzaSyA7Za3kqOaqVF7SY-uArEm2gcLRAgqpe38",
-  authDomain: "attendance-24336.firebaseapp.com",
-  projectId: "attendance-24336",
-  storageBucket: "attendance-24336.firebasestorage.app",
-  messagingSenderId: "496107427998",
-  appId: "1:496107427998:web:c5b00884a988b59c44838f"
+  apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: ""
 };
 /* ================================================================== */
 </script>
@@ -154,6 +150,7 @@ let EMPS=[],TL={},isAdmin=false,matcher=null,stream=null,modelsP=null,unsubs=[],
 function login(){$('lerr').textContent='';auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value).catch(()=>$('lerr').textContent='البريد أو كلمة السر غير صحيحة')}
 (function(){const m=location.hash.match(/k=([^&]+)/);if(m){const k=decodeURIComponent(m[1]);history.replaceState(null,'',location.pathname+location.search);auth.signInWithEmailAndPassword(CONFIG.deviceEmail,k).catch(()=>{$('lerr').textContent='الباركود غير صالح'})}})();
 auth.onAuthStateChanged(u=>{
+ if(CONFIG.testMode)return;
  unsubs.forEach(f=>f());unsubs=[];
  if(!u){$('vl').className='';$('v1').className=$('v2').className='hide';$('nav').className='hide';return}
  isAdmin=u.email.toLowerCase()==CONFIG.adminEmail.toLowerCase();
@@ -280,6 +277,7 @@ function del(id){if(confirm('حذف الموظف؟ (سجلاته القديمة 
 function mkqr(){const k=$('qp').value;if(!k)return alert('اكتب كلمة سر حساب الجهاز');
  const u=location.origin+location.pathname+'#k='+encodeURIComponent(k);$('qr').innerHTML='';
  new QRCode($('qr'),{text:u,width:240,height:240});$('qt').textContent='امسح الباركود بكاميرا الموبايل للدخول إلى صفحة البصمة'}
+if(CONFIG.testMode){isAdmin=true;$('vl').className='hide';$('nav').className='noprint';$('ttl').textContent+=' (وضع تجريبي)';go(1);start()}
 </script>
 </body>
 </html>
