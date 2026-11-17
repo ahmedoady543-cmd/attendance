@@ -61,6 +61,8 @@ const CONFIG = {
   deviceEmail: 'ضع-ايميل-حساب-الجهاز-هنا@gmail.com', // الحساب الذي يدخل به الباركود تلقائياً
   lat: 0, lng: 0, radius: 150, // موقع المكتب (خط العرض والطول) والمسافة بالمتر. اتركهم 0 لإلغاء فحص الموقع
   models: 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/'
+};
+/* الصق هنا إعدادات Firebase من موقع Firebase */
 const firebaseConfig = {
   apiKey: "AIzaSyA7Za3kqOaqVF7SY-uArEm2gcLRAgqpe38",
   authDomain: "attendance-24336.firebaseapp.com",
@@ -146,11 +148,12 @@ const FAKE=new URLSearchParams(location.search).get('t'); /* للتجربة: ?t=
 function now(){const d=new Date();if(FAKE){const[h,m]=FAKE.split(':');d.setHours(+h,+m,0)}return d}
 $('ttl').textContent=CONFIG.office;$('r1').textContent=CONFIG.inStart+' – '+CONFIG.inEnd;$('r2').textContent=CONFIG.outStart;
 
+if(!firebaseConfig.apiKey){$('lerr').textContent='خطأ: إعدادات firebaseConfig فارغة داخل الملف';throw new Error('empty firebaseConfig')}
 firebase.initializeApp(firebaseConfig);
 const auth=firebase.auth(),db=firebase.firestore();
 let EMPS=[],TL={},isAdmin=false,matcher=null,stream=null,modelsP=null,unsubs=[],startDay=iso(now());
 
-function login(){$('lerr').textContent='';auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value).catch(()=>$('lerr').textContent='البريد أو كلمة السر غير صحيحة')}
+function login(){$('lerr').textContent='';auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value).catch(e=>{const c=e.code||'',M={'auth/unauthorized-domain':'رابط الموقع غير مضاف إلى Authorized domains في Firebase','auth/operation-not-allowed':'لم يتم تفعيل Email/Password في Firebase','auth/invalid-api-key':'إعدادات firebaseConfig غير صحيحة','auth/api-key-not-valid.-please-pass-a-valid-api-key.':'إعدادات firebaseConfig غير صحيحة','auth/network-request-failed':'لا يوجد اتصال بالإنترنت','auth/too-many-requests':'محاولات كثيرة، انتظر قليلاً','auth/invalid-credential':'البريد أو كلمة السر غير صحيحة','auth/wrong-password':'البريد أو كلمة السر غير صحيحة','auth/user-not-found':'البريد أو كلمة السر غير صحيحة'};$('lerr').textContent=M[c]||('خطأ: '+c)})}
 (function(){const m=location.hash.match(/k=([^&]+)/);if(m){const k=decodeURIComponent(m[1]);history.replaceState(null,'',location.pathname+location.search);auth.signInWithEmailAndPassword(CONFIG.deviceEmail,k).catch(()=>{$('lerr').textContent='الباركود غير صالح'})}})();
 auth.onAuthStateChanged(u=>{
  if(CONFIG.testMode)return;
