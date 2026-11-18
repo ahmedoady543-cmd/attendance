@@ -61,8 +61,8 @@ const CONFIG = {
   office: 'مكتب النائب إياد الجبوري',
   inStart: '08:30', inEnd: '09:00', outStart: '15:00',
   threshold: 0.5, weekend: [5, 6],
-  adminEmail: 'ahmedoady53@gmail.com',
-  deviceEmail: 'device@office.com',
+  adminEmail: 'ahmedoady543@gmail.com',
+  deviceEmail: 'staff@office.com',   // بريد داخلي للموظفين (لا يراه أحد). كلمة سره هي الباسورد المشترك
   models: 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/'
 };
 const firebaseConfig = {
@@ -77,15 +77,25 @@ const firebaseConfig = {
 </script>
 <header>
  <div><h1 id="ttl"></h1><small>نظام الحضور والانصراف بالبصمة الوجهية</small></div>
- <nav class="noprint hide" id="nav"><button id="n1" class="on" onclick="go(1)">البصمة</button><button id="n2" onclick="go(2)">لوحة المدير</button><button id="n3" onclick="auth.signOut()">تسجيل خروج</button></nav>
+ <nav class="noprint hide" id="nav"><button id="n1" class="on" onclick="go(1)">البصمة</button><button id="n2" onclick="go(2)">لوحة المدير</button><button id="n3" onclick="auth.signOut()">تسجيل خروج</button><button id="n4" onclick="showLogin()">دخول المدير</button></nav>
 </header>
 <main>
-<section id="vl">
+<section id="vs" class="hide">
+ <div class="card" style="max-width:360px;margin:30px auto;text-align:center">
+  <h3 style="margin-top:0">دخول الموظفين</h3>
+  <input id="sp" type="password" placeholder="كلمة السر" style="width:100%;text-align:center" onkeydown="if(event.key=='Enter')staffLogin()"><br><br>
+  <button class="b" style="width:100%" onclick="staffLogin()">دخول</button>
+  <p class="note" id="serr" style="color:#b3261e"></p>
+  <a href="#" onclick="showLogin();return false" class="note">دخول المدير</a>
+ </div>
+</section>
+<section id="vl" class="hide">
  <div class="card" style="max-width:360px;margin:30px auto;text-align:center">
   <h3 style="margin-top:0">دخول المدير</h3>
   <input id="em" type="email" placeholder="البريد الإلكتروني" style="width:100%;direction:ltr"><br><br>
   <input id="pw" type="password" placeholder="كلمة السر" style="width:100%;direction:ltr" onkeydown="if(event.key=='Enter')login()"><br><br>
-  <button class="b" style="width:100%" onclick="login()">دخول</button>
+  <button class="b" style="width:100%" onclick="login()">دخول</button><br><br>
+  <button class="b s" style="width:100%" onclick="backAdmin()">رجوع</button>
   <p class="note" id="lerr" style="color:#b3261e"></p>
  </div>
 </section>
@@ -129,8 +139,8 @@ const firebaseConfig = {
    <p id="lmsg" style="font-weight:700"></p></div>
   <div class="card" style="text-align:center">
    <div class="noprint"><h3 style="margin-top:0">باركود التسجيل</h3>
-    <p class="note">اكتب كلمة سر حساب الجهاز، اضغط «إنشاء»، ثم اطبع الباركود وعلّقه بالمكتب.</p>
-    <input id="qp" type="password" placeholder="كلمة سر حساب الجهاز" style="direction:ltr"> <button class="b" onclick="mkqr()">إنشاء</button> <button class="b s" onclick="print()">طباعة</button></div>
+    <p class="note">اضغط «إنشاء الباركود» ثم اطبعه وعلّقه بالمكتب. يفتح صفحة البصمة مباشرة.</p>
+    <button class="b" onclick="mkqr()">إنشاء الباركود</button> <button class="b s" onclick="print()">طباعة</button></div>
    <div id="qr" style="display:flex;justify-content:center;margin:20px"></div><div id="qt" style="font-weight:700"></div></div>
  </div>
 </section>
@@ -156,12 +166,15 @@ let EMPS=[],TL={},TLc={},fly={},OFFICE=null,isAdmin=false,matcher=null,stream=nu
 
 function login(){$('lerr').textContent='';
  auth.signInWithEmailAndPassword($('em').value.trim(),$('pw').value).catch(e=>{const c=e.code||'',M={'auth/unauthorized-domain':'رابط الموقع غير مضاف إلى Authorized domains في Firebase','auth/operation-not-allowed':'لم يتم تفعيل Email/Password في Firebase','auth/network-request-failed':'لا يوجد اتصال بالإنترنت','auth/too-many-requests':'محاولات كثيرة، انتظر قليلاً','auth/invalid-credential':'البريد أو كلمة السر غير صحيحة','auth/wrong-password':'البريد أو كلمة السر غير صحيحة','auth/user-not-found':'البريد أو كلمة السر غير صحيحة'};$('lerr').textContent=M[c]||('خطأ: '+c)})}
-(function(){const m=location.hash.match(/k=([^&]+)/);if(m){const k=decodeURIComponent(m[1]);history.replaceState(null,'',location.pathname+location.search);auth.signInWithEmailAndPassword(CONFIG.deviceEmail,k).catch(()=>{$('lerr').textContent='الباركود غير صالح'})}})();
+function showLogin(){$('v1').className=$('v2').className=$('vs').className='hide';$('vl').className='';$('lerr').textContent=''}
+function backAdmin(){if(auth.currentUser)go(1);else{$('vl').className='hide';$('vs').className=''}}
+function staffLogin(){$('serr').textContent='';
+ auth.signInWithEmailAndPassword(CONFIG.deviceEmail,$('sp').value.trim()).catch(e=>{const c=e.code||'';$('serr').textContent=(c=='auth/invalid-credential'||c=='auth/wrong-password'||c=='auth/user-not-found')?'كلمة السر غير صحيحة':c=='auth/unauthorized-domain'?'رابط الموقع غير مضاف إلى Authorized domains':c=='auth/network-request-failed'?'لا يوجد اتصال بالإنترنت':'خطأ: '+c})}
 auth.onAuthStateChanged(u=>{
  unsubs.forEach(f=>f());unsubs=[];
- if(!u){$('vl').className='';$('v1').className=$('v2').className='hide';$('nav').className='hide';return}
- isAdmin=u.email.toLowerCase()==CONFIG.adminEmail.toLowerCase();
- $('vl').className='hide';$('nav').className='noprint';$('n2').className=$('n3').className=isAdmin?'':'hide';
+ if(!u){$('vs').className='';$('vl').className=$('v1').className=$('v2').className='hide';$('nav').className='hide';return}
+ isAdmin=!u.isAnonymous&&!!u.email&&u.email.toLowerCase()==CONFIG.adminEmail.toLowerCase();
+ $('vl').className='hide';$('nav').className='noprint';$('n2').className=$('n3').className=isAdmin?'':'hide';$('n4').className=isAdmin?'hide':'';
  go(1);start()});
 
 function mode(){const d=now(),t=d.getHours()*60+d.getMinutes();
@@ -174,7 +187,7 @@ function tick(){const d=now();if(iso(d)!=startDay)location.reload();
  $('dt').textContent=d.toLocaleDateString('ar-IQ',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
  const m=mode();$('mode').textContent=m[1];$('mode').className='pill '+(m[0]=='in'||m[0]=='out'?'p-ok':m[0]=='closed'?'p-bad':'p-wait')}
 setInterval(tick,1000);tick();
-function go(n){$('v1').className=n==1?'':'hide';$('v2').className=n==2&&isAdmin?'':'hide';$('n1').className=n==1?'on':'';$('n2').className=n==2?'on':'';if(n==2)tab(1);if(n==1)cam()}
+function go(n){$('vl').className=$('vs').className='hide';$('v1').className=n==1?'':'hide';$('v2').className=n==2&&isAdmin?'':'hide';$('n1').className=n==1?'on':'';$('n2').className=n==2?'on':'';if(n==2)tab(1);if(n==1)cam()}
 async function cam(){if(stream)return;try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:480,height:480}});vid.srcObject=stream;evid.srcObject=stream}catch(e){msg('تعذر تشغيل الكاميرا: اسمح للمتصفح باستخدامها','bad')}}
 
 /* ---- الحلقة (شبيهة بـ Face ID) ---- */
@@ -286,8 +299,7 @@ function elist(){if(!isAdmin)return;$('elist').innerHTML='<table><tr><th>الم�
 function del(id){if(confirm('حذف الموظف؟ (سجلاته القديمة تبقى)'))db.collection('employees').doc(id).delete()}
 function saveLoc(){$('lmsg').textContent='جاري تحديد الموقع...';
  navigator.geolocation.getCurrentPosition(p=>db.collection('settings').doc('office').set({lat:p.coords.latitude,lng:p.coords.longitude,radius:+$('rad').value||100}).then(()=>{$('lmsg').textContent+=' ✓ (دقة GPS: '+Math.round(p.coords.accuracy)+' م)'}),()=>alert('اسمح للموقع (GPS)'),{enableHighAccuracy:true,timeout:20000,maximumAge:0})}
-function mkqr(){const k=$('qp').value;if(!k)return alert('اكتب كلمة سر حساب الجهاز');
- const u=location.origin+location.pathname+'#k='+encodeURIComponent(k);$('qr').innerHTML='';
+function mkqr(){const u=location.origin+location.pathname;$('qr').innerHTML='';
  new QRCode($('qr'),{text:u,width:240,height:240});$('qt').textContent='امسح الباركود بكاميرا الموبايل للدخول إلى صفحة البصمة'}
 </script>
 </body>
